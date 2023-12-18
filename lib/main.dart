@@ -1,125 +1,259 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const App());
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
+class App extends StatefulWidget {
+  const App({Key? key}) : super(key: key);
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a blue toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
+  State<App> createState() => _AppState();
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class _AppState extends State<App> {
+  ScanResult? scanResult;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+  final _flashOnController = TextEditingController(text: 'Flash on');
+  final _flashOffController = TextEditingController(text: 'Flash off');
+  final _cancelController = TextEditingController(text: 'Cancel');
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+  var _aspectTolerance = 0.00;
+  var _numberOfCameras = 0;
+  var _selectedCamera = -1;
+  var _useAutoFocus = true;
+  var _autoEnableFlash = false;
 
-  final String title;
+  static final _possibleFormats = BarcodeFormat.values.toList()
+    ..removeWhere((e) => e == BarcodeFormat.unknown);
+
+  List<BarcodeFormat> selectedFormats = [..._possibleFormats];
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
+  void initState() {
+    super.initState();
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+    Future.delayed(Duration.zero, () async {
+      _numberOfCameras = await BarcodeScanner.numberOfCameras;
+      setState(() {});
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+    final scanResult = this.scanResult;
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('Barcode Scanner Example'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.camera),
+              tooltip: 'Scan',
+              onPressed: _scan,
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          ],
+        ),
+        body: ListView(
+          shrinkWrap: true,
+          children: <Widget>[
+            if (scanResult != null)
+              Card(
+                child: Column(
+                  children: <Widget>[
+                    ListTile(
+                      title: const Text('Result Type'),
+                      subtitle: Text(scanResult.type.toString()),
+                    ),
+                    ListTile(
+                      title: const Text('Raw Content'),
+                      subtitle: Text(scanResult.rawContent),
+                    ),
+                    ListTile(
+                      title: const Text('Format'),
+                      subtitle: Text(scanResult.format.toString()),
+                    ),
+                    ListTile(
+                      title: const Text('Format note'),
+                      subtitle: Text(scanResult.formatNote),
+                    ),
+                  ],
+                ),
+              ),
+            const ListTile(
+              title: Text('Camera selection'),
+              dense: true,
+              enabled: false,
+            ),
+            RadioListTile(
+              onChanged: (v) => setState(() => _selectedCamera = -1),
+              value: -1,
+              title: const Text('Default camera'),
+              groupValue: _selectedCamera,
+            ),
+            ...List.generate(
+              _numberOfCameras,
+              (i) => RadioListTile(
+                onChanged: (v) => setState(() => _selectedCamera = i),
+                value: i,
+                title: Text('Camera ${i + 1}'),
+                groupValue: _selectedCamera,
+              ),
+            ),
+            const ListTile(
+              title: Text('Button Texts'),
+              dense: true,
+              enabled: false,
+            ),
+            ListTile(
+              title: TextField(
+                decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Flash On',
+                ),
+                controller: _flashOnController,
+              ),
+            ),
+            ListTile(
+              title: TextField(
+                decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Flash Off',
+                ),
+                controller: _flashOffController,
+              ),
+            ),
+            ListTile(
+              title: TextField(
+                decoration: const InputDecoration(
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  labelText: 'Cancel',
+                ),
+                controller: _cancelController,
+              ),
+            ),
+            if (Platform.isAndroid) ...[
+              const ListTile(
+                title: Text('Android specific options'),
+                dense: true,
+                enabled: false,
+              ),
+              ListTile(
+                title: Text(
+                  'Aspect tolerance (${_aspectTolerance.toStringAsFixed(2)})',
+                ),
+                subtitle: Slider(
+                  min: -1,
+                  value: _aspectTolerance,
+                  onChanged: (value) {
+                    setState(() {
+                      _aspectTolerance = value;
+                    });
+                  },
+                ),
+              ),
+              CheckboxListTile(
+                title: const Text('Use autofocus'),
+                value: _useAutoFocus,
+                onChanged: (checked) {
+                  setState(() {
+                    _useAutoFocus = checked!;
+                  });
+                },
+              ),
+            ],
+            const ListTile(
+              title: Text('Other options'),
+              dense: true,
+              enabled: false,
+            ),
+            CheckboxListTile(
+              title: const Text('Start with flash'),
+              value: _autoEnableFlash,
+              onChanged: (checked) {
+                setState(() {
+                  _autoEnableFlash = checked!;
+                });
+              },
+            ),
+            const ListTile(
+              title: Text('Barcode formats'),
+              dense: true,
+              enabled: false,
+            ),
+            ListTile(
+              trailing: Checkbox(
+                tristate: true,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                value: selectedFormats.length == _possibleFormats.length
+                    ? true
+                    : selectedFormats.isEmpty
+                        ? false
+                        : null,
+                onChanged: (checked) {
+                  setState(() {
+                    selectedFormats = [
+                      if (checked ?? false) ..._possibleFormats,
+                    ];
+                  });
+                },
+              ),
+              dense: true,
+              enabled: false,
+              title: const Text('Detect barcode formats'),
+              subtitle: const Text(
+                'If all are unselected, all possible '
+                'platform formats will be used',
+              ),
+            ),
+            ..._possibleFormats.map(
+              (format) => CheckboxListTile(
+                value: selectedFormats.contains(format),
+                onChanged: (i) {
+                  setState(
+                    () => selectedFormats.contains(format)
+                        ? selectedFormats.remove(format)
+                        : selectedFormats.add(format),
+                  );
+                },
+                title: Text(format.toString()),
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  Future<void> _scan() async {
+    try {
+      final result = await BarcodeScanner.scan(
+        options: ScanOptions(
+          strings: {
+            'cancel': _cancelController.text,
+            'flash_on': _flashOnController.text,
+            'flash_off': _flashOffController.text,
+          },
+          restrictFormat: selectedFormats,
+          useCamera: _selectedCamera,
+          autoEnableFlash: _autoEnableFlash,
+          android: AndroidOptions(
+            aspectTolerance: _aspectTolerance,
+            useAutoFocus: _useAutoFocus,
+          ),
+        ),
+      );
+      setState(() => scanResult = result);
+    } on PlatformException catch (e) {
+      setState(() {
+        scanResult = ScanResult(
+          rawContent: e.code == BarcodeScanner.cameraAccessDenied
+              ? 'The user did not grant the camera permission!'
+              : 'Unknown error: $e',
+        );
+      });
+    }
   }
 }
