@@ -7,8 +7,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:mycosmi/main.dart';
+
+import 'package:mycosmi/scan.dart';
 
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
